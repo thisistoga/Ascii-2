@@ -303,13 +303,8 @@ body {
     <button class="btn btn-accent" onclick="randomizeAll()">Randomize All</button>
     <button class="btn" onclick="exportPNG()">Export PNG</button>
     <button class="btn" onclick="exportGIF()">Export WebM</button>
-    <select id="bg-color" onchange="state.bgColor=this.value" style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:3px;font-size:11px;">
-      <option value="#000000" selected>Black</option>
-      <option value="#111111">#111</option>
-      <option value="#1a1a2e">Navy</option>
-      <option value="#ffffff">White</option>
-      <option value="#0d1117">GitHub</option>
-    </select>
+    <label style="font-size:11px;color:var(--dim);">BG</label>
+    <input type="color" id="bg-color" value="#000000" onchange="state.bgColor=this.value" style="width:28px;height:24px;padding:0;border:1px solid var(--border);border-radius:3px;background:none;cursor:pointer;">
     <select id="canvas-size" onchange="setCanvasSize(this.value)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:3px;font-size:11px;">
       <option value="1080x1920">1080x1920</option>
       <option value="1920x1080">1920x1080</option>
