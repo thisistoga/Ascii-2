@@ -1267,19 +1267,8 @@ function buildLayerUI() {
   state.layers.forEach((layer, idx) => {
     const card = document.createElement('div');
     card.className = 'layer-card';
-    card.draggable = true;
     card.dataset.idx = idx;
 
-    card.addEventListener('dragstart', e => {
-      dragSrcIdx = idx;
-      card.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-      dragSrcIdx = null;
-      document.querySelectorAll('.layer-card').forEach(c => c.classList.remove('drag-over'));
-    });
     card.addEventListener('dragover', e => {
       e.preventDefault();
       card.classList.add('drag-over');
@@ -1297,6 +1286,18 @@ function buildLayerUI() {
 
     const header = document.createElement('div');
     header.className = 'layer-header';
+    header.draggable = true;
+
+    header.addEventListener('dragstart', e => {
+      dragSrcIdx = idx;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    header.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      dragSrcIdx = null;
+      document.querySelectorAll('.layer-card').forEach(c => c.classList.remove('drag-over'));
+    });
 
     const dot = document.createElement('div');
     dot.className = 'layer-color';
