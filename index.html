@@ -365,7 +365,7 @@ function makeLayer(overrides = {}) {
     noise: overrides.noise || 'perlin',
     gridSize: overrides.gridSize || 20,
     shape: overrides.shape || 'square',
-    colors: overrides.colors || ['#f0c030', '#e8a020', '#d06020', '#e04040', '#f0b0a0'],
+    colors: overrides.colors || ['#f0c030'],
     opacity: overrides.opacity != null ? overrides.opacity : 1,
     noiseScale: overrides.noiseScale || 0.05,
     seed: overrides.seed || Math.floor(Math.random() * 99999),
@@ -394,7 +394,7 @@ state.layers.push(makeLayer({
   noise: 'perlin',
   gridSize: 20,
   shape: 'square',
-  colors: ['#f0c030', '#e8a020', '#ffd700', '#d4a020', '#f5d060'],
+  colors: ['#f0c030'],
   noiseScale: 0.03,
   threshold: 0.15,
   opacity: 0.95,
@@ -407,7 +407,7 @@ state.layers.push(makeLayer({
   noise: 'worley',
   gridSize: 20,
   shape: 'cross',
-  colors: ['#e04040', '#d06020', '#ff6b35', '#c0392b', '#28a745'],
+  colors: ['#e04040'],
   noiseScale: 0.04,
   threshold: 0.35,
   opacity: 0.85,
@@ -420,7 +420,7 @@ state.layers.push(makeLayer({
   noise: 'simplex',
   gridSize: 20,
   shape: 'circle',
-  colors: ['#f0b0a0', '#ffb347', '#ff6b6b', '#ffd700', '#4ecdc4'],
+  colors: ['#f0b0a0'],
   noiseScale: 0.06,
   threshold: 0.3,
   opacity: 0.8,
@@ -1467,7 +1467,7 @@ function addLayer(overrides) {
   if (state.layers.length >= 12) return;
   const palette = WARM_PALETTES[Math.floor(Math.random() * WARM_PALETTES.length)];
   state.layers.push(makeLayer({
-    colors: palette.slice(),
+    colors: [palette[Math.floor(Math.random() * palette.length)]],
     noise: NOISE_TYPES[Math.floor(Math.random() * NOISE_TYPES.length)],
     shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
     gridSize: 20,
@@ -1492,7 +1492,7 @@ function randomizeAll() {
     const palette = WARM_PALETTES[Math.floor(Math.random() * WARM_PALETTES.length)];
     state.layers.push(makeLayer({
       name: 'Layer ' + (i + 1),
-      colors: palette.slice().sort(() => Math.random() - 0.5).slice(0, 3 + Math.floor(Math.random() * 3)),
+      colors: [palette[Math.floor(Math.random() * palette.length)]],
       noise: NOISE_TYPES[Math.floor(Math.random() * NOISE_TYPES.length)],
       shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
       gridSize: 20,
