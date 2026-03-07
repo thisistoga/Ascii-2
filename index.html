@@ -97,7 +97,6 @@ body {
 
 #main-canvas {
   box-shadow: 0 0 40px rgba(0,0,0,0.6);
-  image-rendering: pixelated;
 }
 
 /* Buttons */
@@ -217,14 +216,6 @@ body {
   font-family: inherit;
   font-size: 11px;
 }
-.ctrl-row input[type="color"] {
-  width: 24px; height: 24px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0;
-  cursor: pointer;
-  background: none;
-}
 
 .color-palette {
   display: flex;
@@ -241,7 +232,7 @@ body {
   position: relative;
 }
 .color-swatch:hover::after {
-  content: '×';
+  content: '\00d7';
   position: absolute;
   inset: 0;
   display: flex;
@@ -287,6 +278,17 @@ body {
   backdrop-filter: blur(8px);
 }
 #anim-bar .btn { border-radius: 12px; }
+
+#renderer-badge {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-size: 10px;
+  color: #555;
+  background: rgba(0,0,0,0.5);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
 </style>
 </head>
 <body>
@@ -300,7 +302,7 @@ body {
   <div id="global-controls">
     <button class="btn btn-accent" onclick="randomizeAll()">Randomize All</button>
     <button class="btn" onclick="exportPNG()">Export PNG</button>
-    <button class="btn" onclick="exportGIF()">Export GIF</button>
+    <button class="btn" onclick="exportGIF()">Export WebM</button>
     <select id="bg-color" onchange="state.bgColor=this.value" style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:3px;font-size:11px;">
       <option value="#000000" selected>Black</option>
       <option value="#111111">#111</option>
@@ -309,11 +311,11 @@ body {
       <option value="#0d1117">GitHub</option>
     </select>
     <select id="canvas-size" onchange="setCanvasSize(this.value)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:3px;font-size:11px;">
-      <option value="1080x1920">1080×1920</option>
-      <option value="1920x1080">1920×1080</option>
-      <option value="1080x1080">1080×1080</option>
-      <option value="800x600">800×600</option>
-      <option value="512x512">512×512</option>
+      <option value="1080x1920">1080x1920</option>
+      <option value="1920x1080">1920x1080</option>
+      <option value="1080x1080">1080x1080</option>
+      <option value="800x600">800x600</option>
+      <option value="512x512">512x512</option>
     </select>
   </div>
 
@@ -327,169 +329,23 @@ body {
 <div id="canvas-wrap">
   <canvas id="main-canvas"></canvas>
   <div id="anim-bar">
-    <button class="btn btn-sm" id="play-btn" onclick="togglePlay()">▶ Play</button>
+    <button class="btn btn-sm" id="play-btn" onclick="togglePlay()">&#9654; Play</button>
     <label style="font-size:10px;color:#aaa;">Speed</label>
     <input type="range" min="0" max="200" value="50" style="width:80px;accent-color:var(--accent);" oninput="state.masterSpeed=this.value/100">
   </div>
+  <div id="renderer-badge"></div>
 </div>
 
 <script>
 // ============================================================
-// NOISE FUNCTIONS
-// ============================================================
-
-// Permutation table for Perlin/Simplex
-const perm = new Uint8Array(512);
-const grad3 = [
-  [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
-  [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
-  [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
-];
-
-function initPerm(seed) {
-  const p = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) p[i] = i;
-  // Fisher-Yates with seed
-  let s = seed | 0;
-  for (let i = 255; i > 0; i--) {
-    s = (s * 16807 + 0) % 2147483647;
-    const j = s % (i + 1);
-    [p[i], p[j]] = [p[j], p[i]];
-  }
-  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
-}
-
-function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-function lerp(a, b, t) { return a + t * (b - a); }
-function dot3(g, x, y) { return g[0]*x + g[1]*y; }
-
-// 2D Perlin noise
-function perlin2(x, y) {
-  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
-  x -= Math.floor(x); y -= Math.floor(y);
-  const u = fade(x), v = fade(y);
-  const A = perm[X] + Y, B = perm[X+1] + Y;
-  return lerp(
-    lerp(dot3(grad3[perm[A]%12], x, y), dot3(grad3[perm[B]%12], x-1, y), u),
-    lerp(dot3(grad3[perm[A+1]%12], x, y-1), dot3(grad3[perm[B+1]%12], x-1, y-1), u),
-    v
-  );
-}
-
-// Simplex 2D
-const F2 = 0.5 * (Math.sqrt(3) - 1);
-const G2 = (3 - Math.sqrt(3)) / 6;
-function simplex2(x, y) {
-  const s = (x + y) * F2;
-  const i = Math.floor(x + s), j = Math.floor(y + s);
-  const t = (i + j) * G2;
-  const X0 = i - t, Y0 = j - t;
-  const x0 = x - X0, y0 = y - Y0;
-  const i1 = x0 > y0 ? 1 : 0, j1 = x0 > y0 ? 0 : 1;
-  const x1 = x0 - i1 + G2, y1 = y0 - j1 + G2;
-  const x2 = x0 - 1 + 2*G2, y2 = y0 - 1 + 2*G2;
-  const ii = i & 255, jj = j & 255;
-  let n0 = 0, n1 = 0, n2 = 0;
-  let t0 = 0.5 - x0*x0 - y0*y0;
-  if (t0 > 0) { t0 *= t0; n0 = t0 * t0 * dot3(grad3[perm[ii + perm[jj]] % 12], x0, y0); }
-  let t1 = 0.5 - x1*x1 - y1*y1;
-  if (t1 > 0) { t1 *= t1; n1 = t1 * t1 * dot3(grad3[perm[ii+i1 + perm[jj+j1]] % 12], x1, y1); }
-  let t2 = 0.5 - x2*x2 - y2*y2;
-  if (t2 > 0) { t2 *= t2; n2 = t2 * t2 * dot3(grad3[perm[ii+1 + perm[jj+1]] % 12], x2, y2); }
-  return 70 * (n0 + n1 + n2);
-}
-
-// Worley / Voronoi cellular
-function seededRand(seed) {
-  let s = seed;
-  return function() {
-    s = (s * 16807 + 0) % 2147483647;
-    return s / 2147483647;
-  };
-}
-
-function worley2(x, y, seed) {
-  const ix = Math.floor(x), iy = Math.floor(y);
-  let minDist = 999;
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      const cx = ix + dx, cy = iy + dy;
-      const r = seededRand(cx * 374761393 + cy * 668265263 + seed);
-      const px = cx + r(), py = cy + r();
-      const d = Math.sqrt((x-px)*(x-px) + (y-py)*(y-py));
-      if (d < minDist) minDist = d;
-    }
-  }
-  return Math.min(minDist / 1.5, 1) * 2 - 1; // map to [-1, 1]
-}
-
-// fBm
-function fbm2(x, y, octaves, seed) {
-  initPerm(seed);
-  let val = 0, amp = 1, freq = 1, max = 0;
-  for (let i = 0; i < octaves; i++) {
-    val += perlin2(x * freq, y * freq) * amp;
-    max += amp;
-    amp *= 0.5;
-    freq *= 2;
-  }
-  return val / max;
-}
-
-// White noise
-function white2(x, y, seed) {
-  let h = seed + x * 374761393 + y * 668265263;
-  h = (h ^ (h >> 13)) * 1274126177;
-  h = h ^ (h >> 16);
-  return (h & 0xffff) / 0xffff * 2 - 1;
-}
-
-// Sine wave interference
-function sine2(x, y, seed) {
-  const a = Math.sin(x * 0.7 + seed) + Math.sin(y * 0.8 + seed * 1.3);
-  const b = Math.sin((x + y) * 0.5 + seed * 0.7);
-  return (a + b) / 3;
-}
-
-// Value noise
-function value2(x, y, seed) {
-  const ix = Math.floor(x), iy = Math.floor(y);
-  const fx = x - ix, fy = y - iy;
-  const u = fade(fx), v = fade(fy);
-  const hash = (a, b) => {
-    let h = seed + a * 374761393 + b * 668265263;
-    h = (h ^ (h >> 13)) * 1274126177;
-    return ((h ^ (h >> 16)) & 0xffff) / 0xffff * 2 - 1;
-  };
-  return lerp(
-    lerp(hash(ix, iy), hash(ix+1, iy), u),
-    lerp(hash(ix, iy+1), hash(ix+1, iy+1), u),
-    v
-  );
-}
-
-// Noise dispatcher
-function getNoise(type, x, y, seed, octaves) {
-  switch (type) {
-    case 'perlin': initPerm(seed); return perlin2(x, y);
-    case 'simplex': initPerm(seed); return simplex2(x, y);
-    case 'worley': return worley2(x, y, seed);
-    case 'fbm': return fbm2(x, y, octaves || 4, seed);
-    case 'white': return white2(Math.floor(x), Math.floor(y), seed);
-    case 'sine': return sine2(x, y, seed);
-    case 'value': return value2(x, y, seed);
-    default: initPerm(seed); return perlin2(x, y);
-  }
-}
-
-// ============================================================
 // STATE
 // ============================================================
-
 const SHAPES = ['square', 'circle', 'cross', 'vstripes', 'hstripes', 'mixed'];
 const NOISE_TYPES = ['perlin', 'simplex', 'worley', 'fbm', 'white', 'sine', 'value'];
-const BLEND_MODES = ['source-over', 'multiply', 'screen', 'overlay', 'lighter'];
+const BLEND_MODES_GL = ['normal', 'multiply', 'screen', 'overlay', 'add'];
 const BLEND_LABELS = ['Normal', 'Multiply', 'Screen', 'Overlay', 'Add'];
+// Canvas2D fallback blend mode names
+const BLEND_MODES_2D = ['source-over', 'multiply', 'screen', 'overlay', 'lighter'];
 
 const WARM_PALETTES = [
   ['#f0c030', '#e8a020', '#d06020', '#e04040', '#f0b0a0', '#ffd700'],
@@ -504,19 +360,20 @@ let layerIdCounter = 0;
 function makeLayer(overrides = {}) {
   return {
     id: layerIdCounter++,
-    name: overrides.name || `Layer ${layerIdCounter}`,
+    name: overrides.name || 'Layer ' + layerIdCounter,
     visible: true,
     noise: overrides.noise || 'perlin',
     gridSize: overrides.gridSize || 16,
     shape: overrides.shape || 'square',
     colors: overrides.colors || ['#f0c030', '#e8a020', '#d06020', '#e04040', '#f0b0a0'],
-    opacity: overrides.opacity ?? 1,
+    opacity: overrides.opacity != null ? overrides.opacity : 1,
     noiseScale: overrides.noiseScale || 0.05,
     seed: overrides.seed || Math.floor(Math.random() * 99999),
-    threshold: overrides.threshold ?? 0.2,
-    animSpeed: overrides.animSpeed ?? 0,
-    blendMode: overrides.blendMode || 'source-over',
+    threshold: overrides.threshold != null ? overrides.threshold : 0.2,
+    animSpeed: overrides.animSpeed != null ? overrides.animSpeed : 0,
+    blendMode: overrides.blendMode || 'normal',
     octaves: overrides.octaves || 4,
+    _dirty: true, // marks FBO needs re-render
   };
 }
 
@@ -553,7 +410,6 @@ state.layers.push(makeLayer({
   threshold: 0.35,
   opacity: 0.85,
   seed: 137,
-  blendMode: 'source-over',
 }));
 
 state.layers.push(makeLayer({
@@ -569,20 +425,788 @@ state.layers.push(makeLayer({
 }));
 
 // ============================================================
-// CANVAS & RENDERING
+// WEBGL2 RENDERER
 // ============================================================
 
 const canvas = document.getElementById('main-canvas');
-const ctx = canvas.getContext('2d');
-let offscreen, offCtx;
+let useWebGL = true;
+let gl, renderer;
+
+function initWebGL() {
+  gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false, premultipliedAlpha: false });
+  if (!gl) { useWebGL = false; return false; }
+  document.getElementById('renderer-badge').textContent = 'WebGL2';
+  renderer = new WebGLRenderer(gl);
+  return true;
+}
+
+// --- Shader source ---
+
+const VERT_SRC = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+// The big layer fragment shader with all noise + SDF shapes
+const LAYER_FRAG_SRC = `#version 300 es
+precision highp float;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+// Uniforms
+uniform vec2 u_resolution;     // canvas WxH
+uniform float u_gridSize;      // grid cell size in pixels
+uniform float u_noiseScale;    // noise zoom
+uniform float u_seed;          // noise seed
+uniform float u_threshold;     // cutoff 0..1
+uniform float u_time;          // animation time offset
+uniform float u_animSpeed;     // per-layer anim speed
+uniform int u_noiseType;       // 0=perlin 1=simplex 2=worley 3=fbm 4=white 5=sine 6=value
+uniform int u_shapeType;       // 0=square 1=circle 2=cross 3=vstripes 4=hstripes 5=mixed
+uniform int u_octaves;         // fbm octaves
+uniform vec3 u_colors[8];     // color palette
+uniform int u_colorCount;      // number of colors
+
+// ---- Hash functions ----
+float hash21(vec2 p, float seed) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973) + seed * 0.01);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+vec2 hash22(vec2 p, float seed) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973) + seed * 0.01);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract(vec2((p3.x + p3.y) * p3.z, (p3.x + p3.z) * p3.y));
+}
+
+// ---- Perlin 2D ----
+vec2 grad2(vec2 p, float seed) {
+  float h = hash21(p, seed) * 6.2831853;
+  return vec2(cos(h), sin(h));
+}
+
+float fade5(float t) { return t * t * t * (t * (t * 6.0 - 15.0) + 10.0); }
+
+float perlinNoise(vec2 p, float seed) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = vec2(fade5(f.x), fade5(f.y));
+
+  float a = dot(grad2(i + vec2(0,0), seed), f - vec2(0,0));
+  float b = dot(grad2(i + vec2(1,0), seed), f - vec2(1,0));
+  float c = dot(grad2(i + vec2(0,1), seed), f - vec2(0,1));
+  float d = dot(grad2(i + vec2(1,1), seed), f - vec2(1,1));
+
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// ---- Simplex 2D ----
+float simplexNoise(vec2 p, float seed) {
+  const float F2 = 0.36602540378;  // (sqrt(3)-1)/2
+  const float G2 = 0.21132486540;  // (3-sqrt(3))/6
+
+  vec2 s = floor(p + (p.x + p.y) * F2);
+  vec2 x = p - s + (s.x + s.y) * G2;
+
+  vec2 e = step(vec2(0.0), x - x.yx);
+  vec2 i1 = e * (1.0 - e.yx);
+
+  vec2 x1 = x - i1 + G2;
+  vec2 x2 = x - 1.0 + 2.0 * G2;
+
+  float n0 = 0.0, n1 = 0.0, n2 = 0.0;
+
+  float t0 = 0.5 - dot(x, x);
+  if (t0 > 0.0) { t0 *= t0; n0 = t0 * t0 * dot(grad2(s, seed), x); }
+
+  float t1 = 0.5 - dot(x1, x1);
+  if (t1 > 0.0) { t1 *= t1; n1 = t1 * t1 * dot(grad2(s + i1, seed), x1); }
+
+  float t2 = 0.5 - dot(x2, x2);
+  if (t2 > 0.0) { t2 *= t2; n2 = t2 * t2 * dot(grad2(s + 1.0, seed), x2); }
+
+  return 70.0 * (n0 + n1 + n2);
+}
+
+// ---- Worley / Voronoi ----
+float worleyNoise(vec2 p, float seed) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  float minDist = 1.0e10;
+
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 neighbor = vec2(float(x), float(y));
+      vec2 point = hash22(i + neighbor, seed);
+      vec2 diff = neighbor + point - f;
+      float dist = dot(diff, diff);
+      minDist = min(minDist, dist);
+    }
+  }
+  return sqrt(minDist) * 2.0 - 1.0; // map to [-1,1]
+}
+
+// ---- fBm ----
+float fbmNoise(vec2 p, float seed, int octaves) {
+  float val = 0.0, amp = 1.0, freq = 1.0, maxAmp = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= octaves) break;
+    val += perlinNoise(p * freq, seed + float(i) * 17.0) * amp;
+    maxAmp += amp;
+    amp *= 0.5;
+    freq *= 2.0;
+  }
+  return val / maxAmp;
+}
+
+// ---- White noise ----
+float whiteNoise(vec2 p, float seed) {
+  return hash21(floor(p), seed) * 2.0 - 1.0;
+}
+
+// ---- Sine interference ----
+float sineNoise(vec2 p, float seed) {
+  float a = sin(p.x * 0.7 + seed) + sin(p.y * 0.8 + seed * 1.3);
+  float b = sin((p.x + p.y) * 0.5 + seed * 0.7);
+  return (a + b) / 3.0;
+}
+
+// ---- Value noise ----
+float valueNoise(vec2 p, float seed) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = vec2(fade5(f.x), fade5(f.y));
+
+  float a = hash21(i + vec2(0,0), seed) * 2.0 - 1.0;
+  float b = hash21(i + vec2(1,0), seed) * 2.0 - 1.0;
+  float c = hash21(i + vec2(0,1), seed) * 2.0 - 1.0;
+  float d = hash21(i + vec2(1,1), seed) * 2.0 - 1.0;
+
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// ---- Noise dispatcher ----
+float getNoise(vec2 p, float seed) {
+  if (u_noiseType == 0) return perlinNoise(p, seed);
+  if (u_noiseType == 1) return simplexNoise(p, seed);
+  if (u_noiseType == 2) return worleyNoise(p, seed);
+  if (u_noiseType == 3) return fbmNoise(p, seed, u_octaves);
+  if (u_noiseType == 4) return whiteNoise(p, seed);
+  if (u_noiseType == 5) return sineNoise(p, seed);
+  if (u_noiseType == 6) return valueNoise(p, seed);
+  return perlinNoise(p, seed);
+}
+
+// ---- SDF shapes ----
+// p = position within cell, normalized to [0,1]x[0,1]
+// Returns 1.0 if inside shape, 0.0 if outside
+
+float sdSquare(vec2 p) {
+  vec2 d = abs(p - 0.5);
+  float pad = 0.08;
+  return step(max(d.x, d.y), 0.5 - pad);
+}
+
+float sdCircle(vec2 p) {
+  float d = length(p - 0.5);
+  float pad = 0.08;
+  return step(d, 0.5 - pad);
+}
+
+float sdCross(vec2 p) {
+  vec2 c = p - 0.5;
+  float pad = 0.08;
+  float half = 0.5 - pad;
+  float arm = 0.15;
+  float h = step(abs(c.x), arm) * step(abs(c.y), half);
+  float v = step(abs(c.y), arm) * step(abs(c.x), half);
+  return max(h, v);
+}
+
+float sdVStripes(vec2 p) {
+  float pad = 0.08;
+  float inside = step(pad, p.x) * step(p.x, 1.0 - pad) * step(pad, p.y) * step(p.y, 1.0 - pad);
+  float stripe = step(0.5, fract(p.x * 5.0));
+  return inside * stripe;
+}
+
+float sdHStripes(vec2 p) {
+  float pad = 0.08;
+  float inside = step(pad, p.x) * step(p.x, 1.0 - pad) * step(pad, p.y) * step(p.y, 1.0 - pad);
+  float stripe = step(0.5, fract(p.y * 5.0));
+  return inside * stripe;
+}
+
+float getShape(vec2 p, int shapeType) {
+  if (shapeType == 0) return sdSquare(p);
+  if (shapeType == 1) return sdCircle(p);
+  if (shapeType == 2) return sdCross(p);
+  if (shapeType == 3) return sdVStripes(p);
+  if (shapeType == 4) return sdHStripes(p);
+  return sdSquare(p); // fallback
+}
+
+void main() {
+  // Pixel position
+  vec2 pixelPos = v_uv * u_resolution;
+
+  // Grid quantization
+  vec2 cellIndex = floor(pixelPos / u_gridSize);
+  vec2 cellUV = fract(pixelPos / u_gridSize);
+
+  // Noise coordinates with animation offset
+  float tOff = u_time * u_animSpeed * 0.01;
+  vec2 noiseCoord = cellIndex * u_noiseScale + vec2(tOff, tOff * 0.7);
+
+  // Compute noise
+  float n = getNoise(noiseCoord, u_seed);
+  // Normalize to [0, 1]
+  n = n * 0.5 + 0.5;
+
+  // Threshold test
+  if (n < u_threshold) {
+    fragColor = vec4(0.0);
+    return;
+  }
+
+  // Remap above-threshold to [0, 1]
+  float remapped = (n - u_threshold) / (1.0 - u_threshold);
+  remapped = clamp(remapped, 0.0, 1.0);
+
+  // Color lookup
+  int ci = int(remapped * float(u_colorCount));
+  ci = min(ci, u_colorCount - 1);
+  vec3 color = u_colors[ci];
+
+  // Shape type (mixed mode selects shape based on noise value)
+  int shapeType = u_shapeType;
+  if (u_shapeType == 5) { // mixed
+    shapeType = int(remapped * 5.0);
+    shapeType = min(shapeType, 4);
+  }
+
+  // SDF shape test
+  float shape = getShape(cellUV, shapeType);
+
+  fragColor = vec4(color * shape, shape);
+}`;
+
+// Composite fragment shader — blends layer textures onto the background
+const COMPOSITE_FRAG_SRC = `#version 300 es
+precision highp float;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform sampler2D u_layerTex;
+uniform float u_opacity;
+uniform int u_blendMode; // 0=normal 1=multiply 2=screen 3=overlay 4=add
+
+void main() {
+  vec4 layer = texture(u_layerTex, v_uv);
+  layer.a *= u_opacity;
+  fragColor = layer;
+  // Blend modes applied via custom blending; output premultiplied alpha
+  fragColor.rgb *= fragColor.a;
+}`;
+
+// Final pass: just blit a texture
+const BLIT_FRAG_SRC = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_tex;
+void main() {
+  fragColor = texture(u_tex, v_uv);
+}`;
+
+// Blend pass: blends src onto dst using specified blend mode
+const BLEND_FRAG_SRC = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform sampler2D u_dst;    // accumulated result so far
+uniform sampler2D u_src;    // new layer to blend
+uniform float u_opacity;
+uniform int u_blendMode;    // 0=normal 1=multiply 2=screen 3=overlay 4=add
+
+vec3 blendOverlay(vec3 base, vec3 blend) {
+  return mix(
+    2.0 * base * blend,
+    1.0 - 2.0 * (1.0 - base) * (1.0 - blend),
+    step(0.5, base)
+  );
+}
+
+void main() {
+  vec4 dst = texture(u_dst, v_uv);
+  vec4 src = texture(u_src, v_uv);
+  src.a *= u_opacity;
+
+  vec3 blended;
+  if (u_blendMode == 0) {           // Normal
+    blended = src.rgb;
+  } else if (u_blendMode == 1) {    // Multiply
+    blended = dst.rgb * src.rgb;
+  } else if (u_blendMode == 2) {    // Screen
+    blended = 1.0 - (1.0 - dst.rgb) * (1.0 - src.rgb);
+  } else if (u_blendMode == 3) {    // Overlay
+    blended = blendOverlay(dst.rgb, src.rgb);
+  } else {                          // Add
+    blended = dst.rgb + src.rgb;
+  }
+
+  // Alpha composite: blend result over dst using src alpha
+  vec3 result = mix(dst.rgb, blended, src.a);
+  float resultA = dst.a + src.a * (1.0 - dst.a);
+
+  fragColor = vec4(result, resultA);
+}`;
+
+
+class WebGLRenderer {
+  constructor(gl) {
+    this.gl = gl;
+    this.layerProgram = this._compileProgram(VERT_SRC, LAYER_FRAG_SRC);
+    this.blendProgram = this._compileProgram(VERT_SRC, BLEND_FRAG_SRC);
+    this.blitProgram = this._compileProgram(VERT_SRC, BLIT_FRAG_SRC);
+    this._initQuad();
+    this.layerFBOs = new Map(); // layer.id -> {fbo, tex}
+    this.accumFBO = [null, null]; // ping-pong FBOs for compositing
+    this._currentW = 0;
+    this._currentH = 0;
+  }
+
+  _compileShader(type, src) {
+    const gl = this.gl;
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error('Shader compile error:', gl.getShaderInfoLog(s));
+      console.error('Source:', src.split('\n').map((l,i)=>(i+1)+': '+l).join('\n'));
+      gl.deleteShader(s);
+      return null;
+    }
+    return s;
+  }
+
+  _compileProgram(vSrc, fSrc) {
+    const gl = this.gl;
+    const vs = this._compileShader(gl.VERTEX_SHADER, vSrc);
+    const fs = this._compileShader(gl.FRAGMENT_SHADER, fSrc);
+    if (!vs || !fs) return null;
+    const p = gl.createProgram();
+    gl.attachShader(p, vs);
+    gl.attachShader(p, fs);
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      console.error('Program link error:', gl.getProgramInfoLog(p));
+      return null;
+    }
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    return p;
+  }
+
+  _initQuad() {
+    const gl = this.gl;
+    this.quadVAO = gl.createVertexArray();
+    gl.bindVertexArray(this.quadVAO);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+    // Bind for all programs
+    for (const prog of [this.layerProgram, this.blendProgram, this.blitProgram]) {
+      if (!prog) continue;
+      const loc = gl.getAttribLocation(prog, 'a_pos');
+      if (loc >= 0) {
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      }
+    }
+    gl.bindVertexArray(null);
+  }
+
+  _createFBO(w, h) {
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { fbo, tex, w, h };
+  }
+
+  _ensureFBOSize(fboObj, w, h) {
+    if (fboObj && fboObj.w === w && fboObj.h === h) return fboObj;
+    if (fboObj) {
+      this.gl.deleteTexture(fboObj.tex);
+      this.gl.deleteFramebuffer(fboObj.fbo);
+    }
+    return this._createFBO(w, h);
+  }
+
+  _ensureSize(w, h) {
+    if (this._currentW === w && this._currentH === h) return;
+    this._currentW = w;
+    this._currentH = h;
+    this.accumFBO[0] = this._ensureFBOSize(this.accumFBO[0], w, h);
+    this.accumFBO[1] = this._ensureFBOSize(this.accumFBO[1], w, h);
+    // Clean up layer FBOs that no longer match
+    for (const [id, fbo] of this.layerFBOs) {
+      if (fbo.w !== w || fbo.h !== h) {
+        this.gl.deleteTexture(fbo.tex);
+        this.gl.deleteFramebuffer(fbo.fbo);
+        this.layerFBOs.delete(id);
+      }
+    }
+  }
+
+  _getLayerFBO(layerId, w, h) {
+    let fbo = this.layerFBOs.get(layerId);
+    if (!fbo || fbo.w !== w || fbo.h !== h) {
+      if (fbo) {
+        this.gl.deleteTexture(fbo.tex);
+        this.gl.deleteFramebuffer(fbo.fbo);
+      }
+      fbo = this._createFBO(w, h);
+      this.layerFBOs.set(layerId, fbo);
+    }
+    return fbo;
+  }
+
+  _setUniform(prog, name, type, value) {
+    const gl = this.gl;
+    const loc = gl.getUniformLocation(prog, name);
+    if (loc === null) return;
+    switch(type) {
+      case '1f': gl.uniform1f(loc, value); break;
+      case '1i': gl.uniform1i(loc, value); break;
+      case '2f': gl.uniform2f(loc, value[0], value[1]); break;
+      case '3fv': gl.uniform3fv(loc, value); break;
+    }
+  }
+
+  renderLayer(layer, time, w, h) {
+    const gl = this.gl;
+    const fbo = this._getLayerFBO(layer.id, w, h);
+    const prog = this.layerProgram;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo.fbo);
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(prog);
+    gl.bindVertexArray(this.quadVAO);
+
+    this._setUniform(prog, 'u_resolution', '2f', [w, h]);
+    this._setUniform(prog, 'u_gridSize', '1f', layer.gridSize);
+    this._setUniform(prog, 'u_noiseScale', '1f', layer.noiseScale);
+    this._setUniform(prog, 'u_seed', '1f', layer.seed);
+    this._setUniform(prog, 'u_threshold', '1f', layer.threshold);
+    this._setUniform(prog, 'u_time', '1f', time);
+    this._setUniform(prog, 'u_animSpeed', '1f', layer.animSpeed);
+    this._setUniform(prog, 'u_noiseType', '1i', NOISE_TYPES.indexOf(layer.noise));
+    this._setUniform(prog, 'u_shapeType', '1i', SHAPES.indexOf(layer.shape));
+    this._setUniform(prog, 'u_octaves', '1i', layer.octaves);
+
+    // Pack colors
+    const colorData = new Float32Array(8 * 3);
+    for (let i = 0; i < Math.min(layer.colors.length, 8); i++) {
+      const c = hexToRGB(layer.colors[i]);
+      colorData[i*3] = c[0];
+      colorData[i*3+1] = c[1];
+      colorData[i*3+2] = c[2];
+    }
+    this._setUniform(prog, 'u_colorCount', '1i', layer.colors.length);
+    const colLoc = gl.getUniformLocation(prog, 'u_colors');
+    if (colLoc) gl.uniform3fv(colLoc, colorData);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return fbo;
+  }
+
+  render(state) {
+    const gl = this.gl;
+    const W = state.canvasW, H = state.canvasH;
+    this._ensureSize(W, H);
+
+    // Parse bg color
+    const bg = hexToRGB(state.bgColor);
+
+    // Render accumulator pass: start with bg color in accumFBO[0]
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFBO[0].fbo);
+    gl.viewport(0, 0, W, H);
+    gl.clearColor(bg[0], bg[1], bg[2], 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    let readIdx = 0; // accumFBO[readIdx] has current accumulated result
+
+    for (const layer of state.layers) {
+      if (!layer.visible) continue;
+
+      // Render layer to its own FBO
+      const layerFBO = this.renderLayer(layer, state.time, W, H);
+
+      // Blend layer onto accumulated result
+      const writeIdx = 1 - readIdx;
+      const blendProg = this.blendProgram;
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFBO[writeIdx].fbo);
+      gl.viewport(0, 0, W, H);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      gl.useProgram(blendProg);
+      gl.bindVertexArray(this.quadVAO);
+
+      // Bind dst (accumulated) texture to unit 0
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.accumFBO[readIdx].tex);
+      this._setUniform(blendProg, 'u_dst', '1i', 0);
+
+      // Bind src (layer) texture to unit 1
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, layerFBO.tex);
+      this._setUniform(blendProg, 'u_src', '1i', 1);
+
+      this._setUniform(blendProg, 'u_opacity', '1f', layer.opacity);
+      this._setUniform(blendProg, 'u_blendMode', '1i', BLEND_MODES_GL.indexOf(layer.blendMode));
+
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+      readIdx = writeIdx;
+    }
+
+    // Final blit to screen
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+
+    gl.useProgram(this.blitProgram);
+    gl.bindVertexArray(this.quadVAO);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.accumFBO[readIdx].tex);
+    this._setUniform(this.blitProgram, 'u_tex', '1i', 0);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  // Cleanup stale layer FBOs for removed layers
+  cleanupLayers(activeLayers) {
+    const activeIds = new Set(activeLayers.map(l => l.id));
+    for (const [id, fbo] of this.layerFBOs) {
+      if (!activeIds.has(id)) {
+        this.gl.deleteTexture(fbo.tex);
+        this.gl.deleteFramebuffer(fbo.fbo);
+        this.layerFBOs.delete(id);
+      }
+    }
+  }
+}
+
+function hexToRGB(hex) {
+  const h = hex.replace('#', '');
+  return [
+    parseInt(h.substring(0,2), 16) / 255,
+    parseInt(h.substring(2,4), 16) / 255,
+    parseInt(h.substring(4,6), 16) / 255,
+  ];
+}
+
+// ============================================================
+// CANVAS 2D FALLBACK
+// ============================================================
+
+let ctx2d, offscreen2d, offCtx2d;
+
+function initCanvas2D() {
+  document.getElementById('renderer-badge').textContent = 'Canvas 2D (fallback)';
+  ctx2d = canvas.getContext('2d');
+  offscreen2d = document.createElement('canvas');
+  offCtx2d = offscreen2d.getContext('2d');
+}
+
+// --- JS Noise functions for fallback ---
+const _perm = new Uint8Array(512);
+const _grad3 = [[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],[1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],[0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]];
+
+function _initPerm(seed) {
+  const p = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  let s = seed | 0;
+  for (let i = 255; i > 0; i--) {
+    s = (s * 16807) % 2147483647;
+    const j = s % (i + 1);
+    [p[i], p[j]] = [p[j], p[i]];
+  }
+  for (let i = 0; i < 512; i++) _perm[i] = p[i & 255];
+}
+
+function _fade(t) { return t*t*t*(t*(t*6-15)+10); }
+function _lerp(a,b,t) { return a+t*(b-a); }
+function _dot2(g,x,y) { return g[0]*x+g[1]*y; }
+
+function _perlin2(x,y) {
+  const X=Math.floor(x)&255, Y=Math.floor(y)&255;
+  x-=Math.floor(x); y-=Math.floor(y);
+  const u=_fade(x), v=_fade(y);
+  const A=_perm[X]+Y, B=_perm[X+1]+Y;
+  return _lerp(
+    _lerp(_dot2(_grad3[_perm[A]%12],x,y), _dot2(_grad3[_perm[B]%12],x-1,y), u),
+    _lerp(_dot2(_grad3[_perm[A+1]%12],x,y-1), _dot2(_grad3[_perm[B+1]%12],x-1,y-1), u), v);
+}
+
+function _simplex2(x,y) {
+  const F2=0.5*(Math.sqrt(3)-1), G2=(3-Math.sqrt(3))/6;
+  const s=(x+y)*F2, i=Math.floor(x+s), j=Math.floor(y+s);
+  const t=(i+j)*G2, x0=x-(i-t), y0=y-(j-t);
+  const i1=x0>y0?1:0, j1=x0>y0?0:1;
+  const x1=x0-i1+G2, y1=y0-j1+G2, x2=x0-1+2*G2, y2=y0-1+2*G2;
+  const ii=i&255, jj=j&255;
+  let n0=0,n1=0,n2=0;
+  let t0=0.5-x0*x0-y0*y0;
+  if(t0>0){t0*=t0;n0=t0*t0*_dot2(_grad3[_perm[ii+_perm[jj]]%12],x0,y0);}
+  let t1=0.5-x1*x1-y1*y1;
+  if(t1>0){t1*=t1;n1=t1*t1*_dot2(_grad3[_perm[ii+i1+_perm[jj+j1]]%12],x1,y1);}
+  let t2=0.5-x2*x2-y2*y2;
+  if(t2>0){t2*=t2;n2=t2*t2*_dot2(_grad3[_perm[ii+1+_perm[jj+1]]%12],x2,y2);}
+  return 70*(n0+n1+n2);
+}
+
+function _seededRand(seed) {
+  let s=seed;
+  return function(){s=(s*16807)%2147483647;return s/2147483647;};
+}
+
+function _worley2(x,y,seed) {
+  const ix=Math.floor(x),iy=Math.floor(y);
+  let md=999;
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+    const cx=ix+dx,cy=iy+dy,r=_seededRand(cx*374761393+cy*668265263+seed);
+    const px=cx+r(),py=cy+r(),d=Math.sqrt((x-px)*(x-px)+(y-py)*(y-py));
+    if(d<md)md=d;
+  }
+  return Math.min(md/1.5,1)*2-1;
+}
+
+function _fbm2(x,y,oct,seed) {
+  _initPerm(seed);
+  let v=0,a=1,f=1,m=0;
+  for(let i=0;i<oct;i++){v+=_perlin2(x*f,y*f)*a;m+=a;a*=0.5;f*=2;}
+  return v/m;
+}
+
+function _white2(x,y,seed) {
+  let h=seed+x*374761393+y*668265263;
+  h=(h^(h>>13))*1274126177;h=h^(h>>16);
+  return(h&0xffff)/0xffff*2-1;
+}
+
+function _sine2(x,y,seed) {
+  return(Math.sin(x*0.7+seed)+Math.sin(y*0.8+seed*1.3)+Math.sin((x+y)*0.5+seed*0.7))/3;
+}
+
+function _value2(x,y,seed) {
+  const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy;
+  const u=_fade(fx),v=_fade(fy);
+  const hash=(a,b)=>{let h=seed+a*374761393+b*668265263;h=(h^(h>>13))*1274126177;return((h^(h>>16))&0xffff)/0xffff*2-1;};
+  return _lerp(_lerp(hash(ix,iy),hash(ix+1,iy),u),_lerp(hash(ix,iy+1),hash(ix+1,iy+1),u),v);
+}
+
+function _getNoise(type,x,y,seed,oct) {
+  switch(type){
+    case'perlin':_initPerm(seed);return _perlin2(x,y);
+    case'simplex':_initPerm(seed);return _simplex2(x,y);
+    case'worley':return _worley2(x,y,seed);
+    case'fbm':return _fbm2(x,y,oct||4,seed);
+    case'white':return _white2(Math.floor(x),Math.floor(y),seed);
+    case'sine':return _sine2(x,y,seed);
+    case'value':return _value2(x,y,seed);
+    default:_initPerm(seed);return _perlin2(x,y);
+  }
+}
+
+function _drawShape2D(ctx,shape,x,y,size,color) {
+  ctx.fillStyle=color;
+  const pad=Math.max(1,size*0.1), s=size-pad*2;
+  switch(shape){
+    case'square':ctx.fillRect(x+pad,y+pad,s,s);break;
+    case'circle':ctx.beginPath();ctx.arc(x+size/2,y+size/2,s/2,0,Math.PI*2);ctx.fill();break;
+    case'cross':{const arm=s*0.3,cx2=x+size/2,cy2=y+size/2;ctx.fillRect(cx2-arm/2,cy2-s/2,arm,s);ctx.fillRect(cx2-s/2,cy2-arm/2,s,arm);break;}
+    case'vstripes':{const sw=Math.max(1,s/5);for(let i=0;i<5;i+=2)ctx.fillRect(x+pad+i*sw,y+pad,sw,s);break;}
+    case'hstripes':{const sh=Math.max(1,s/5);for(let i=0;i<5;i+=2)ctx.fillRect(x+pad,y+pad+i*sh,s,sh);break;}
+  }
+}
+
+function renderCanvas2D() {
+  const W=state.canvasW, H=state.canvasH;
+  offscreen2d.width=W; offscreen2d.height=H;
+  ctx2d.globalAlpha=1;
+  ctx2d.globalCompositeOperation='source-over';
+  ctx2d.fillStyle=state.bgColor;
+  ctx2d.fillRect(0,0,W,H);
+
+  const shapes2d=['square','circle','cross','vstripes','hstripes'];
+
+  for(const layer of state.layers){
+    if(!layer.visible)continue;
+    const g=layer.gridSize, cols=Math.ceil(W/g), rows=Math.ceil(H/g);
+    const tOff=state.time*layer.animSpeed*0.01;
+    offCtx2d.clearRect(0,0,W,H);
+    offCtx2d.globalAlpha=1;
+
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const nx=c*layer.noiseScale+tOff, ny=r*layer.noiseScale+tOff*0.7;
+        let n=_getNoise(layer.noise,nx,ny,layer.seed,layer.octaves);
+        n=(n+1)*0.5;
+        if(n<layer.threshold)continue;
+        const rem=(n-layer.threshold)/(1-layer.threshold);
+        const ci=Math.min(Math.floor(rem*layer.colors.length),layer.colors.length-1);
+        let shape=layer.shape;
+        if(shape==='mixed'){shape=shapes2d[Math.floor(rem*shapes2d.length)%shapes2d.length];}
+        _drawShape2D(offCtx2d,shape,c*g,r*g,g,layer.colors[ci]);
+      }
+    }
+
+    const bmIdx = BLEND_MODES_GL.indexOf(layer.blendMode);
+    ctx2d.globalAlpha=layer.opacity;
+    ctx2d.globalCompositeOperation=BLEND_MODES_2D[bmIdx >= 0 ? bmIdx : 0];
+    ctx2d.drawImage(offscreen2d,0,0);
+  }
+  ctx2d.globalAlpha=1;
+  ctx2d.globalCompositeOperation='source-over';
+}
+
+// ============================================================
+// CANVAS SETUP & RENDER LOOP
+// ============================================================
 
 function resizeCanvas() {
   canvas.width = state.canvasW;
   canvas.height = state.canvasH;
-  offscreen = document.createElement('canvas');
-  offscreen.width = state.canvasW;
-  offscreen.height = state.canvasH;
-  offCtx = offscreen.getContext('2d');
+  if (!useWebGL) {
+    offscreen2d.width = state.canvasW;
+    offscreen2d.height = state.canvasH;
+  }
   fitCanvasToView();
 }
 
@@ -602,102 +1226,13 @@ function setCanvasSize(val) {
   resizeCanvas();
 }
 
-function drawShape(ctx, shape, x, y, size, color) {
-  ctx.fillStyle = color;
-  ctx.strokeStyle = color;
-  const pad = Math.max(1, size * 0.1);
-  const s = size - pad * 2;
-
-  switch (shape) {
-    case 'square':
-      ctx.fillRect(x + pad, y + pad, s, s);
-      break;
-    case 'circle':
-      ctx.beginPath();
-      ctx.arc(x + size/2, y + size/2, s/2, 0, Math.PI * 2);
-      ctx.fill();
-      break;
-    case 'cross': {
-      const arm = s * 0.3;
-      const cx = x + size/2, cy = y + size/2;
-      ctx.fillRect(cx - arm/2, cy - s/2, arm, s);
-      ctx.fillRect(cx - s/2, cy - arm/2, s, arm);
-      break;
-    }
-    case 'vstripes': {
-      const stripeW = Math.max(1, s / 5);
-      for (let i = 0; i < 5; i += 2) {
-        ctx.fillRect(x + pad + i * stripeW, y + pad, stripeW, s);
-      }
-      break;
-    }
-    case 'hstripes': {
-      const stripeH = Math.max(1, s / 5);
-      for (let i = 0; i < 5; i += 2) {
-        ctx.fillRect(x + pad, y + pad + i * stripeH, s, stripeH);
-      }
-      break;
-    }
-  }
-}
-
-function renderLayer(layer, time) {
-  const { canvasW: W, canvasH: H } = state;
-  const g = layer.gridSize;
-  const cols = Math.ceil(W / g);
-  const rows = Math.ceil(H / g);
-  const tOff = time * layer.animSpeed * 0.01;
-  const shapes = ['square', 'circle', 'cross', 'vstripes', 'hstripes'];
-
-  offCtx.clearRect(0, 0, W, H);
-  offCtx.globalAlpha = 1;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const nx = c * layer.noiseScale + tOff;
-      const ny = r * layer.noiseScale + tOff * 0.7;
-      let n = getNoise(layer.noise, nx, ny, layer.seed, layer.octaves);
-      // Normalize to 0-1
-      n = (n + 1) * 0.5;
-
-      if (n < layer.threshold) continue;
-
-      // Map to color
-      const remapped = (n - layer.threshold) / (1 - layer.threshold);
-      const ci = Math.min(Math.floor(remapped * layer.colors.length), layer.colors.length - 1);
-      const color = layer.colors[ci];
-
-      // Map to shape
-      let shape = layer.shape;
-      if (shape === 'mixed') {
-        const si = Math.floor(remapped * shapes.length) % shapes.length;
-        shape = shapes[si];
-      }
-
-      drawShape(offCtx, shape, c * g, r * g, g, color);
-    }
-  }
-
-  // Composite onto main canvas
-  ctx.globalAlpha = layer.opacity;
-  ctx.globalCompositeOperation = layer.blendMode;
-  ctx.drawImage(offscreen, 0, 0);
-}
-
 function render() {
-  const { canvasW: W, canvasH: H } = state;
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = state.bgColor;
-  ctx.fillRect(0, 0, W, H);
-
-  for (const layer of state.layers) {
-    if (!layer.visible) continue;
-    renderLayer(layer, state.time);
+  if (useWebGL && renderer) {
+    renderer.render(state);
+    renderer.cleanupLayers(state.layers);
+  } else {
+    renderCanvas2D();
   }
-
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
 }
 
 let lastFrame = 0;
@@ -727,7 +1262,6 @@ function buildLayerUI() {
     card.draggable = true;
     card.dataset.idx = idx;
 
-    // Drag events
     card.addEventListener('dragstart', e => {
       dragSrcIdx = idx;
       card.classList.add('dragging');
@@ -753,7 +1287,6 @@ function buildLayerUI() {
       }
     });
 
-    // Header
     const header = document.createElement('div');
     header.className = 'layer-header';
 
@@ -767,45 +1300,39 @@ function buildLayerUI() {
 
     const visBtn = document.createElement('button');
     visBtn.className = 'layer-vis';
-    visBtn.innerHTML = layer.visible ? '◉' : '○';
+    visBtn.innerHTML = layer.visible ? '&#9673;' : '&#9675;';
     visBtn.onclick = (e) => {
       e.stopPropagation();
       layer.visible = !layer.visible;
-      visBtn.innerHTML = layer.visible ? '◉' : '○';
+      visBtn.innerHTML = layer.visible ? '&#9673;' : '&#9675;';
     };
 
     const expandBtn = document.createElement('button');
     expandBtn.className = 'layer-expand';
-    expandBtn.textContent = '▶';
-    expandBtn.onclick = (e) => {
-      e.stopPropagation();
-      card.classList.toggle('expanded');
-    };
+    expandBtn.textContent = '\u25B6';
+    expandBtn.onclick = (e) => { e.stopPropagation(); card.classList.toggle('expanded'); };
 
     header.append(dot, name, visBtn, expandBtn);
     header.onclick = () => card.classList.toggle('expanded');
 
-    // Body
     const body = document.createElement('div');
     body.className = 'layer-body';
 
-    body.appendChild(makeSelect('Noise', NOISE_TYPES, layer.noise, v => layer.noise = v));
-    body.appendChild(makeSelect('Shape', SHAPES, layer.shape, v => layer.shape = v));
-    body.appendChild(makeSelect('Blend', BLEND_MODES, layer.blendMode, v => layer.blendMode = v, BLEND_LABELS));
-    body.appendChild(makeSlider('Grid', 2, 64, 1, layer.gridSize, v => layer.gridSize = v, 'px'));
-    body.appendChild(makeSlider('Scale', 0.005, 0.2, 0.001, layer.noiseScale, v => layer.noiseScale = v));
-    body.appendChild(makeSlider('Threshold', 0, 0.9, 0.01, layer.threshold, v => layer.threshold = v));
-    body.appendChild(makeSlider('Opacity', 0, 1, 0.01, layer.opacity, v => layer.opacity = v));
-    body.appendChild(makeSlider('Anim', 0, 100, 1, layer.animSpeed, v => layer.animSpeed = v));
-    body.appendChild(makeSlider('Seed', 0, 99999, 1, layer.seed, v => layer.seed = v));
+    body.appendChild(makeSelect('Noise', NOISE_TYPES, layer.noise, v => { layer.noise = v; }));
+    body.appendChild(makeSelect('Shape', SHAPES, layer.shape, v => { layer.shape = v; }));
+    body.appendChild(makeSelect('Blend', BLEND_MODES_GL, layer.blendMode, v => { layer.blendMode = v; }, BLEND_LABELS));
+    body.appendChild(makeSlider('Grid', 2, 64, 1, layer.gridSize, v => { layer.gridSize = v; }, 'px'));
+    body.appendChild(makeSlider('Scale', 0.005, 0.2, 0.001, layer.noiseScale, v => { layer.noiseScale = v; }));
+    body.appendChild(makeSlider('Threshold', 0, 0.9, 0.01, layer.threshold, v => { layer.threshold = v; }));
+    body.appendChild(makeSlider('Opacity', 0, 1, 0.01, layer.opacity, v => { layer.opacity = v; }));
+    body.appendChild(makeSlider('Anim', 0, 100, 1, layer.animSpeed, v => { layer.animSpeed = v; }));
+    body.appendChild(makeSlider('Seed', 0, 99999, 1, layer.seed, v => { layer.seed = v; }));
     if (layer.noise === 'fbm') {
-      body.appendChild(makeSlider('Octaves', 1, 8, 1, layer.octaves, v => layer.octaves = v));
+      body.appendChild(makeSlider('Octaves', 1, 8, 1, layer.octaves, v => { layer.octaves = v; }));
     }
 
-    // Color palette
     body.appendChild(makeColorPalette(layer));
 
-    // Layer action buttons
     const btns = document.createElement('div');
     btns.className = 'layer-btns';
 
@@ -832,7 +1359,8 @@ function buildLayerUI() {
   });
 }
 
-function makeSlider(label, min, max, step, value, onChange, unit = '') {
+function makeSlider(label, min, max, step, value, onChange, unit) {
+  unit = unit || '';
   const row = document.createElement('div');
   row.className = 'ctrl-row';
 
@@ -877,7 +1405,6 @@ function makeSelect(label, options, value, onChange, labels) {
   });
   sel.onchange = () => {
     onChange(sel.value);
-    // Rebuild if noise type changed (for octaves toggle)
     if (label === 'Noise') buildLayerUI();
   };
 
@@ -899,22 +1426,15 @@ function makeColorPalette(layer) {
     const sw = document.createElement('div');
     sw.className = 'color-swatch';
     sw.style.background = col;
-    sw.onclick = (e) => {
-      if (layer.colors.length > 2) {
-        layer.colors.splice(ci, 1);
-        buildLayerUI();
-      }
+    sw.onclick = () => {
+      if (layer.colors.length > 2) { layer.colors.splice(ci, 1); buildLayerUI(); }
     };
-    // Right-click to change color
     sw.oncontextmenu = (e) => {
       e.preventDefault();
       const inp = document.createElement('input');
       inp.type = 'color';
       inp.value = col;
-      inp.onchange = () => {
-        layer.colors[ci] = inp.value;
-        sw.style.background = inp.value;
-      };
+      inp.onchange = () => { layer.colors[ci] = inp.value; sw.style.background = inp.value; };
       inp.click();
     };
     pal.appendChild(sw);
@@ -928,10 +1448,7 @@ function makeColorPalette(layer) {
       const inp = document.createElement('input');
       inp.type = 'color';
       inp.value = '#ff8800';
-      inp.onchange = () => {
-        layer.colors.push(inp.value);
-        buildLayerUI();
-      };
+      inp.onchange = () => { layer.colors.push(inp.value); buildLayerUI(); };
       inp.click();
     };
     pal.appendChild(addBtn);
@@ -949,7 +1466,7 @@ function addLayer(overrides) {
   if (state.layers.length >= 12) return;
   const palette = WARM_PALETTES[Math.floor(Math.random() * WARM_PALETTES.length)];
   state.layers.push(makeLayer({
-    colors: [...palette],
+    colors: palette.slice(),
     noise: NOISE_TYPES[Math.floor(Math.random() * NOISE_TYPES.length)],
     shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
     gridSize: [8, 10, 12, 16, 20, 24][Math.floor(Math.random() * 6)],
@@ -962,7 +1479,7 @@ function addLayer(overrides) {
 
 function duplicateLayer(idx) {
   const src = state.layers[idx];
-  const dup = { ...src, id: layerIdCounter++, name: src.name + ' copy', colors: [...src.colors] };
+  const dup = Object.assign({}, src, { id: layerIdCounter++, name: src.name + ' copy', colors: src.colors.slice() });
   state.layers.splice(idx + 1, 0, dup);
   buildLayerUI();
 }
@@ -973,15 +1490,15 @@ function randomizeAll() {
   for (let i = 0; i < count; i++) {
     const palette = WARM_PALETTES[Math.floor(Math.random() * WARM_PALETTES.length)];
     state.layers.push(makeLayer({
-      name: `Layer ${i + 1}`,
-      colors: [...palette].sort(() => Math.random() - 0.5).slice(0, 3 + Math.floor(Math.random() * 3)),
+      name: 'Layer ' + (i + 1),
+      colors: palette.slice().sort(() => Math.random() - 0.5).slice(0, 3 + Math.floor(Math.random() * 3)),
       noise: NOISE_TYPES[Math.floor(Math.random() * NOISE_TYPES.length)],
       shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
       gridSize: [6, 8, 10, 12, 16, 20, 24, 32][Math.floor(Math.random() * 8)],
       noiseScale: 0.01 + Math.random() * 0.1,
       threshold: 0.1 + Math.random() * 0.5,
       opacity: 0.6 + Math.random() * 0.4,
-      blendMode: BLEND_MODES[Math.floor(Math.random() * BLEND_MODES.length)],
+      blendMode: BLEND_MODES_GL[Math.floor(Math.random() * BLEND_MODES_GL.length)],
     }));
   }
   buildLayerUI();
@@ -989,40 +1506,67 @@ function randomizeAll() {
 
 function togglePlay() {
   state.playing = !state.playing;
-  document.getElementById('play-btn').textContent = state.playing ? '❚❚ Pause' : '▶ Play';
+  document.getElementById('play-btn').innerHTML = state.playing ? '&#10074;&#10074; Pause' : '&#9654; Play';
 }
 
 function exportPNG() {
   render();
-  const link = document.createElement('a');
-  link.download = `grid-noise-${Date.now()}.png`;
-  link.href = canvas.toDataURL('image/png');
-  link.click();
+  if (useWebGL) {
+    // For WebGL, read pixels to an offscreen 2d canvas
+    const w = state.canvasW, h = state.canvasH;
+    const pixels = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = w;
+    exportCanvas.height = h;
+    const ectx = exportCanvas.getContext('2d');
+    const imgData = ectx.createImageData(w, h);
+    // Flip Y
+    for (let y = 0; y < h; y++) {
+      const srcRow = (h - 1 - y) * w * 4;
+      const dstRow = y * w * 4;
+      for (let x = 0; x < w * 4; x++) {
+        imgData.data[dstRow + x] = pixels[srcRow + x];
+      }
+    }
+    ectx.putImageData(imgData, 0, 0);
+    const link = document.createElement('a');
+    link.download = 'grid-noise-' + Date.now() + '.png';
+    link.href = exportCanvas.toDataURL('image/png');
+    link.click();
+  } else {
+    const link = document.createElement('a');
+    link.download = 'grid-noise-' + Date.now() + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
 }
 
 function exportGIF() {
-  // Simple animated export as WebM using MediaRecorder
   const stream = canvas.captureStream(30);
-  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+  let mimeType = 'video/webm;codecs=vp9';
+  if (!MediaRecorder.isTypeSupported(mimeType)) {
+    mimeType = 'video/webm';
+  }
+  const recorder = new MediaRecorder(stream, { mimeType: mimeType });
   const chunks = [];
   recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = () => {
     const blob = new Blob(chunks, { type: 'video/webm' });
     const link = document.createElement('a');
-    link.download = `grid-noise-${Date.now()}.webm`;
+    link.download = 'grid-noise-' + Date.now() + '.webm';
     link.href = URL.createObjectURL(blob);
     link.click();
   };
-
-  // Record 4 seconds
   const wasPlaying = state.playing;
   state.playing = true;
+  document.getElementById('play-btn').innerHTML = '&#10074;&#10074; Pause';
   recorder.start();
   setTimeout(() => {
     recorder.stop();
     state.playing = wasPlaying;
     if (!wasPlaying) {
-      document.getElementById('play-btn').textContent = '▶ Play';
+      document.getElementById('play-btn').innerHTML = '&#9654; Play';
     }
   }, 4000);
 }
@@ -1031,10 +1575,12 @@ function exportGIF() {
 // INIT
 // ============================================================
 
+if (!initWebGL()) {
+  initCanvas2D();
+}
 resizeCanvas();
 buildLayerUI();
 requestAnimationFrame(loop);
-
 window.addEventListener('resize', fitCanvasToView);
 </script>
 </body>
