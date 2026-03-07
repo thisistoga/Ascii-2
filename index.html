@@ -481,7 +481,6 @@ out vec4 fragColor;
 uniform vec2 u_resolution;     // canvas WxH
 uniform float u_gridSize;      // grid cell size in pixels
 uniform float u_noiseScale;    // noise zoom
-uniform float u_globalScale;   // global scale multiplier
 uniform float u_seed;          // noise seed
 uniform float u_threshold;     // cutoff 0..1
 uniform float u_time;          // animation time offset
@@ -682,7 +681,7 @@ void main() {
 
   // Noise coordinates with animation offset
   float tOff = u_time * u_animSpeed * 0.01;
-  vec2 noiseCoord = cellIndex * u_noiseScale * u_globalScale + vec2(tOff, tOff * 0.7);
+  vec2 noiseCoord = cellIndex * u_noiseScale + vec2(tOff, tOff * 0.7);
 
   // Compute noise
   float n = getNoise(noiseCoord, u_seed);
@@ -911,9 +910,8 @@ class WebGLRenderer {
     gl.bindVertexArray(this.quadVAO);
 
     this._setUniform(prog, 'u_resolution', '2f', [w, h]);
-    this._setUniform(prog, 'u_gridSize', '1f', layer.gridSize);
+    this._setUniform(prog, 'u_gridSize', '1f', layer.gridSize * state.globalScale);
     this._setUniform(prog, 'u_noiseScale', '1f', layer.noiseScale);
-    this._setUniform(prog, 'u_globalScale', '1f', state.globalScale);
     this._setUniform(prog, 'u_seed', '1f', layer.seed);
     this._setUniform(prog, 'u_threshold', '1f', layer.threshold);
     this._setUniform(prog, 'u_time', '1f', time);
@@ -1175,15 +1173,14 @@ function renderCanvas2D() {
 
   for(const layer of state.layers){
     if(!layer.visible)continue;
-    const g=layer.gridSize, cols=Math.ceil(W/g), rows=Math.ceil(H/g);
+    const g=layer.gridSize*state.globalScale, cols=Math.ceil(W/g), rows=Math.ceil(H/g);
     const tOff=state.time*layer.animSpeed*0.01;
     offCtx2d.clearRect(0,0,W,H);
     offCtx2d.globalAlpha=1;
 
     for(let r=0;r<rows;r++){
       for(let c=0;c<cols;c++){
-        const ns=layer.noiseScale*state.globalScale;
-        const nx=c*ns+tOff, ny=r*ns+tOff*0.7;
+        const nx=c*layer.noiseScale+tOff, ny=r*layer.noiseScale+tOff*0.7;
         let n=_getNoise(layer.noise,nx,ny,layer.seed,layer.octaves);
         n=(n+1)*0.5;
         if(n<layer.threshold)continue;
