@@ -317,6 +317,11 @@ body {
       <option value="800x600">800x600</option>
       <option value="512x512">512x512</option>
     </select>
+    <div class="ctrl-row" style="width:100%;margin:4px 0 0;">
+      <label>G.Scale</label>
+      <input type="range" min="0.1" max="5.0" step="0.01" value="1.0" oninput="state.globalScale=parseFloat(this.value);document.getElementById('gs-val').textContent=this.value">
+      <span class="ctrl-val" id="gs-val">1.0</span>
+    </div>
   </div>
 
   <div id="layer-list"></div>
@@ -382,6 +387,7 @@ const state = {
   canvasW: 1080,
   canvasH: 1920,
   masterSpeed: 0.5,
+  globalScale: 1.0,
   playing: true,
   time: 0,
   layers: [],
@@ -475,6 +481,7 @@ out vec4 fragColor;
 uniform vec2 u_resolution;     // canvas WxH
 uniform float u_gridSize;      // grid cell size in pixels
 uniform float u_noiseScale;    // noise zoom
+uniform float u_globalScale;   // global scale multiplier
 uniform float u_seed;          // noise seed
 uniform float u_threshold;     // cutoff 0..1
 uniform float u_time;          // animation time offset
@@ -675,7 +682,7 @@ void main() {
 
   // Noise coordinates with animation offset
   float tOff = u_time * u_animSpeed * 0.01;
-  vec2 noiseCoord = cellIndex * u_noiseScale + vec2(tOff, tOff * 0.7);
+  vec2 noiseCoord = cellIndex * u_noiseScale * u_globalScale + vec2(tOff, tOff * 0.7);
 
   // Compute noise
   float n = getNoise(noiseCoord, u_seed);
@@ -906,6 +913,7 @@ class WebGLRenderer {
     this._setUniform(prog, 'u_resolution', '2f', [w, h]);
     this._setUniform(prog, 'u_gridSize', '1f', layer.gridSize);
     this._setUniform(prog, 'u_noiseScale', '1f', layer.noiseScale);
+    this._setUniform(prog, 'u_globalScale', '1f', state.globalScale);
     this._setUniform(prog, 'u_seed', '1f', layer.seed);
     this._setUniform(prog, 'u_threshold', '1f', layer.threshold);
     this._setUniform(prog, 'u_time', '1f', time);
@@ -1174,7 +1182,8 @@ function renderCanvas2D() {
 
     for(let r=0;r<rows;r++){
       for(let c=0;c<cols;c++){
-        const nx=c*layer.noiseScale+tOff, ny=r*layer.noiseScale+tOff*0.7;
+        const ns=layer.noiseScale*state.globalScale;
+        const nx=c*ns+tOff, ny=r*ns+tOff*0.7;
         let n=_getNoise(layer.noise,nx,ny,layer.seed,layer.octaves);
         n=(n+1)*0.5;
         if(n<layer.threshold)continue;
