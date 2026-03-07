@@ -428,22 +428,33 @@ state.layers.push(makeLayer({
 // WEBGL2 RENDERER
 // ============================================================
 
-const canvas = document.getElementById('main-canvas');
+let canvas = document.getElementById('main-canvas');
 let useWebGL = true;
 let gl, renderer;
 
 function initWebGL() {
-  gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false, premultipliedAlpha: false });
-  if (!gl) { useWebGL = false; return false; }
-  document.getElementById('renderer-badge').textContent = 'WebGL2';
-  renderer = new WebGLRenderer(gl);
-  return true;
+  try {
+    gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false, premultipliedAlpha: false });
+    if (!gl) { useWebGL = false; return false; }
+    renderer = new WebGLRenderer(gl);
+    if (!renderer.layerProgram || !renderer.blendProgram || !renderer.blitProgram) {
+      console.warn('WebGL2 shader compilation failed, falling back to Canvas 2D');
+      useWebGL = false;
+      return false;
+    }
+    document.getElementById('renderer-badge').textContent = 'WebGL2';
+    return true;
+  } catch (e) {
+    console.error('WebGL2 init failed:', e);
+    useWebGL = false;
+    return false;
+  }
 }
 
 // --- Shader source ---
 
 const VERT_SRC = `#version 300 es
-in vec2 a_pos;
+layout(location = 0) in vec2 a_pos;
 out vec2 v_uv;
 void main() {
   v_uv = a_pos * 0.5 + 0.5;
@@ -621,10 +632,10 @@ float sdCircle(vec2 p) {
 float sdCross(vec2 p) {
   vec2 c = p - 0.5;
   float pad = 0.08;
-  float half = 0.5 - pad;
+  float ext = 0.5 - pad;
   float arm = 0.15;
-  float h = step(abs(c.x), arm) * step(abs(c.y), half);
-  float v = step(abs(c.y), arm) * step(abs(c.x), half);
+  float h = step(abs(c.x), arm) * step(abs(c.y), ext);
+  float v = step(abs(c.y), arm) * step(abs(c.x), ext);
   return max(h, v);
 }
 
@@ -694,25 +705,6 @@ void main() {
   float shape = getShape(cellUV, shapeType);
 
   fragColor = vec4(color * shape, shape);
-}`;
-
-// Composite fragment shader — blends layer textures onto the background
-const COMPOSITE_FRAG_SRC = `#version 300 es
-precision highp float;
-
-in vec2 v_uv;
-out vec4 fragColor;
-
-uniform sampler2D u_layerTex;
-uniform float u_opacity;
-uniform int u_blendMode; // 0=normal 1=multiply 2=screen 3=overlay 4=add
-
-void main() {
-  vec4 layer = texture(u_layerTex, v_uv);
-  layer.a *= u_opacity;
-  fragColor = layer;
-  // Blend modes applied via custom blending; output premultiplied alpha
-  fragColor.rgb *= fragColor.a;
 }`;
 
 // Final pass: just blit a texture
@@ -822,15 +814,9 @@ class WebGLRenderer {
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
-    // Bind for all programs
-    for (const prog of [this.layerProgram, this.blendProgram, this.blitProgram]) {
-      if (!prog) continue;
-      const loc = gl.getAttribLocation(prog, 'a_pos');
-      if (loc >= 0) {
-        gl.enableVertexAttribArray(loc);
-        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-      }
-    }
+    // All shaders use layout(location=0) for a_pos
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
   }
 
@@ -1039,6 +1025,16 @@ let ctx2d, offscreen2d, offCtx2d;
 
 function initCanvas2D() {
   document.getElementById('renderer-badge').textContent = 'Canvas 2D (fallback)';
+  // If a WebGL context was already bound to the canvas, we can't get a 2D context
+  // on the same element. Replace the canvas with a fresh one.
+  let testCtx = canvas.getContext('2d');
+  if (!testCtx) {
+    const newCanvas = document.createElement('canvas');
+    newCanvas.id = 'main-canvas';
+    newCanvas.style.cssText = canvas.style.cssText;
+    canvas.parentNode.replaceChild(newCanvas, canvas);
+    canvas = newCanvas;
+  }
   ctx2d = canvas.getContext('2d');
   offscreen2d = document.createElement('canvas');
   offCtx2d = offscreen2d.getContext('2d');
