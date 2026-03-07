@@ -368,7 +368,7 @@ function makeLayer(overrides = {}) {
     name: overrides.name || 'Layer ' + layerIdCounter,
     visible: true,
     noise: overrides.noise || 'perlin',
-    gridSize: overrides.gridSize || 16,
+    gridSize: overrides.gridSize || 20,
     shape: overrides.shape || 'square',
     colors: overrides.colors || ['#f0c030', '#e8a020', '#d06020', '#e04040', '#f0b0a0'],
     opacity: overrides.opacity != null ? overrides.opacity : 1,
@@ -410,7 +410,7 @@ state.layers.push(makeLayer({
 state.layers.push(makeLayer({
   name: 'Red Crosses',
   noise: 'worley',
-  gridSize: 12,
+  gridSize: 20,
   shape: 'cross',
   colors: ['#e04040', '#d06020', '#ff6b35', '#c0392b', '#28a745'],
   noiseScale: 0.04,
@@ -423,7 +423,7 @@ state.layers.push(makeLayer({
 state.layers.push(makeLayer({
   name: 'Pink Circles',
   noise: 'simplex',
-  gridSize: 10,
+  gridSize: 20,
   shape: 'circle',
   colors: ['#f0b0a0', '#ffb347', '#ff6b6b', '#ffd700', '#4ecdc4'],
   noiseScale: 0.06,
