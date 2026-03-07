@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grid Noise — Generative Art Tool</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --panel-w: 340px;
+  --bg: #1a1a1e;
+  --surface: #232328;
+  --surface2: #2c2c32;
+  --border: #3a3a42;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --accent: #f0a030;
+  --accent2: #e06040;
+  --danger: #d04040;
+}
+
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+}
+
+/* Panel */
+#panel {
+  width: var(--panel-w);
+  min-width: var(--panel-w);
+  height: 100vh;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#panel-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+#panel-header h1 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+
+#global-controls {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+#layer-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+#layer-list::-webkit-scrollbar { width: 6px; }
+#layer-list::-webkit-scrollbar-track { background: transparent; }
+#layer-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+#layer-actions {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Canvas area */
+#canvas-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  overflow: hidden;
+  position: relative;
+}
+
+#main-canvas {
+  box-shadow: 0 0 40px rgba(0,0,0,0.6);
+  image-rendering: pixelated;
+}
+
+/* Buttons */
+.btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--border); }
+.btn-accent { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+.btn-accent:hover { background: #e09020; }
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover { background: var(--danger); color: #fff; }
+.btn-sm { padding: 3px 7px; font-size: 10px; }
+
+/* Layer card */
+.layer-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  transition: border-color 0.15s;
+  cursor: grab;
+}
+.layer-card.dragging { opacity: 0.5; }
+.layer-card.drag-over { border-color: var(--accent); }
+.layer-card.expanded { border-color: var(--accent); }
+
+.layer-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  gap: 8px;
+  user-select: none;
+}
+
+.layer-header .layer-color {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.layer-header .layer-name {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.layer-header .layer-vis {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px;
+}
+.layer-header .layer-vis:hover { color: var(--text); }
+
+.layer-header .layer-expand {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 4px;
+  transition: transform 0.2s;
+}
+.layer-card.expanded .layer-expand { transform: rotate(90deg); }
+
+.layer-body {
+  display: none;
+  padding: 8px 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.layer-card.expanded .layer-body { display: block; }
+
+/* Controls */
+.ctrl-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+.ctrl-row label {
+  width: 70px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ctrl-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 4px;
+}
+.ctrl-row .ctrl-val {
+  width: 36px;
+  text-align: right;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.ctrl-row select {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 11px;
+}
+.ctrl-row input[type="color"] {
+  width: 24px; height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+}
+
+.color-palette {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1;
+}
+.color-swatch {
+  width: 22px; height: 22px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+}
+.color-swatch:hover::after {
+  content: '×';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: 14px;
+  border-radius: 2px;
+}
+.color-add {
+  width: 22px; height: 22px;
+  border-radius: 3px;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.color-add:hover { border-color: var(--accent); color: var(--accent); }
+
+.layer-btns {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+/* Animation controls at bottom */
+#anim-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(0,0,0,0.7);
+  padding: 6px 14px;
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+}
+#anim-bar .btn { border-radius: 12px; }
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <div id="panel-header">
+    <h1>GRID NOISE</h1>
+    <span style="font-size:10px;color:var(--text-dim)">generative art</span>
+  </div>
+
+  <div id="global-controls">
+    <button class="btn btn-accent" onclick="randomizeAll()">Randomize All</button>
+    <button class="btn" onclick="exportPNG()">Export PNG</button>
+    <button class="btn" onclick="exportGIF()">Export GIF</button>
+    <select id="bg-color" onchange="state.bgColor=this.value" style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:3px;font-size:11px;">
+      <option value="#000000" selected>Black</option>
+      <option value="#111111">#111</option>
+      <option value="#1a1a2e">Navy</option>
+      <option value="#ffffff">White</option>
+      <option value="#0d1117">GitHub</option>
+    </select>
+    <select id="canvas-size" onchange="setCanvasSize(this.value)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:3px;font-size:11px;">
+      <option value="1080x1920">1080×1920</option>
+      <option value="1920x1080">1920×1080</option>
+      <option value="1080x1080">1080×1080</option>
+      <option value="800x600">800×600</option>
+      <option value="512x512">512×512</option>
+    </select>
+  </div>
+
+  <div id="layer-list"></div>
+
+  <div id="layer-actions">
+    <button class="btn btn-accent" onclick="addLayer()" style="flex:1">+ Add Layer</button>
+  </div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="main-canvas"></canvas>
+  <div id="anim-bar">
+    <button class="btn btn-sm" id="play-btn" onclick="togglePlay()">▶ Play</button>
+    <label style="font-size:10px;color:#aaa;">Speed</label>
+    <input type="range" min="0" max="200" value="50" style="width:80px;accent-color:var(--accent);" oninput="state.masterSpeed=this.value/100">
+  </div>
+</div>
+
+<script>
+// ============================================================
+// NOISE FUNCTIONS
+// ============================================================
+
+// Permutation table for Perlin/Simplex
+const perm = new Uint8Array(512);
+const grad3 = [
+  [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+  [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+  [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+];
+
+function initPerm(seed) {
+  const p = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  // Fisher-Yates with seed
+  let s = seed | 0;
+  for (let i = 255; i > 0; i--) {
+    s = (s * 16807 + 0) % 2147483647;
+    const j = s % (i + 1);
+    [p[i], p[j]] = [p[j], p[i]];
+  }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+}
+
+function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function lerp(a, b, t) { return a + t * (b - a); }
+function dot3(g, x, y) { return g[0]*x + g[1]*y; }
+
+// 2D Perlin noise
+function perlin2(x, y) {
+  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+  x -= Math.floor(x); y -= Math.floor(y);
+  const u = fade(x), v = fade(y);
+  const A = perm[X] + Y, B = perm[X+1] + Y;
+  return lerp(
+    lerp(dot3(grad3[perm[A]%12], x, y), dot3(grad3[perm[B]%12], x-1, y), u),
+    lerp(dot3(grad3[perm[A+1]%12], x, y-1), dot3(grad3[perm[B+1]%12], x-1, y-1), u),
+    v
+  );
+}
+
+// Simplex 2D
+const F2 = 0.5 * (Math.sqrt(3) - 1);
+const G2 = (3 - Math.sqrt(3)) / 6;
+function simplex2(x, y) {
+  const s = (x + y) * F2;
+  const i = Math.floor(x + s), j = Math.floor(y + s);
+  const t = (i + j) * G2;
+  const X0 = i - t, Y0 = j - t;
+  const x0 = x - X0, y0 = y - Y0;
+  const i1 = x0 > y0 ? 1 : 0, j1 = x0 > y0 ? 0 : 1;
+  const x1 = x0 - i1 + G2, y1 = y0 - j1 + G2;
+  const x2 = x0 - 1 + 2*G2, y2 = y0 - 1 + 2*G2;
+  const ii = i & 255, jj = j & 255;
+  let n0 = 0, n1 = 0, n2 = 0;
+  let t0 = 0.5 - x0*x0 - y0*y0;
+  if (t0 > 0) { t0 *= t0; n0 = t0 * t0 * dot3(grad3[perm[ii + perm[jj]] % 12], x0, y0); }
+  let t1 = 0.5 - x1*x1 - y1*y1;
+  if (t1 > 0) { t1 *= t1; n1 = t1 * t1 * dot3(grad3[perm[ii+i1 + perm[jj+j1]] % 12], x1, y1); }
+  let t2 = 0.5 - x2*x2 - y2*y2;
+  if (t2 > 0) { t2 *= t2; n2 = t2 * t2 * dot3(grad3[perm[ii+1 + perm[jj+1]] % 12], x2, y2); }
+  return 70 * (n0 + n1 + n2);
+}
+
+// Worley / Voronoi cellular
+function seededRand(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 16807 + 0) % 2147483647;
+    return s / 2147483647;
+  };
+}
+
+function worley2(x, y, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  let minDist = 999;
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const cx = ix + dx, cy = iy + dy;
+      const r = seededRand(cx * 374761393 + cy * 668265263 + seed);
+      const px = cx + r(), py = cy + r();
+      const d = Math.sqrt((x-px)*(x-px) + (y-py)*(y-py));
+      if (d < minDist) minDist = d;
+    }
+  }
+  return Math.min(minDist / 1.5, 1) * 2 - 1; // map to [-1, 1]
+}
+
+// fBm
+function fbm2(x, y, octaves, seed) {
+  initPerm(seed);
+  let val = 0, amp = 1, freq = 1, max = 0;
+  for (let i = 0; i < octaves; i++) {
+    val += perlin2(x * freq, y * freq) * amp;
+    max += amp;
+    amp *= 0.5;
+    freq *= 2;
+  }
+  return val / max;
+}
+
+// White noise
+function white2(x, y, seed) {
+  let h = seed + x * 374761393 + y * 668265263;
+  h = (h ^ (h >> 13)) * 1274126177;
+  h = h ^ (h >> 16);
+  return (h & 0xffff) / 0xffff * 2 - 1;
+}
+
+// Sine wave interference
+function sine2(x, y, seed) {
+  const a = Math.sin(x * 0.7 + seed) + Math.sin(y * 0.8 + seed * 1.3);
+  const b = Math.sin((x + y) * 0.5 + seed * 0.7);
+  return (a + b) / 3;
+}
+
+// Value noise
+function value2(x, y, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const u = fade(fx), v = fade(fy);
+  const hash = (a, b) => {
+    let h = seed + a * 374761393 + b * 668265263;
+    h = (h ^ (h >> 13)) * 1274126177;
+    return ((h ^ (h >> 16)) & 0xffff) / 0xffff * 2 - 1;
+  };
+  return lerp(
+    lerp(hash(ix, iy), hash(ix+1, iy), u),
+    lerp(hash(ix, iy+1), hash(ix+1, iy+1), u),
+    v
+  );
+}
+
+// Noise dispatcher
+function getNoise(type, x, y, seed, octaves) {
+  switch (type) {
+    case 'perlin': initPerm(seed); return perlin2(x, y);
+    case 'simplex': initPerm(seed); return simplex2(x, y);
+    case 'worley': return worley2(x, y, seed);
+    case 'fbm': return fbm2(x, y, octaves || 4, seed);
+    case 'white': return white2(Math.floor(x), Math.floor(y), seed);
+    case 'sine': return sine2(x, y, seed);
+    case 'value': return value2(x, y, seed);
+    default: initPerm(seed); return perlin2(x, y);
+  }
+}
+
+// ============================================================
+// STATE
+// ============================================================
+
+const SHAPES = ['square', 'circle', 'cross', 'vstripes', 'hstripes', 'mixed'];
+const NOISE_TYPES = ['perlin', 'simplex', 'worley', 'fbm', 'white', 'sine', 'value'];
+const BLEND_MODES = ['source-over', 'multiply', 'screen', 'overlay', 'lighter'];
+const BLEND_LABELS = ['Normal', 'Multiply', 'Screen', 'Overlay', 'Add'];
+
+const WARM_PALETTES = [
+  ['#f0c030', '#e8a020', '#d06020', '#e04040', '#f0b0a0', '#ffd700'],
+  ['#ff6b35', '#f7c59f', '#efefd0', '#004e89', '#1a659e', '#d62828'],
+  ['#e63946', '#f1faee', '#a8dadc', '#457b9d', '#1d3557', '#ffb703'],
+  ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93', '#ff924c'],
+  ['#ffbe0b', '#fb5607', '#ff006e', '#8338ec', '#3a86ff', '#06d6a0'],
+];
+
+let layerIdCounter = 0;
+
+function makeLayer(overrides = {}) {
+  return {
+    id: layerIdCounter++,
+    name: overrides.name || `Layer ${layerIdCounter}`,
+    visible: true,
+    noise: overrides.noise || 'perlin',
+    gridSize: overrides.gridSize || 16,
+    shape: overrides.shape || 'square',
+    colors: overrides.colors || ['#f0c030', '#e8a020', '#d06020', '#e04040', '#f0b0a0'],
+    opacity: overrides.opacity ?? 1,
+    noiseScale: overrides.noiseScale || 0.05,
+    seed: overrides.seed || Math.floor(Math.random() * 99999),
+    threshold: overrides.threshold ?? 0.2,
+    animSpeed: overrides.animSpeed ?? 0,
+    blendMode: overrides.blendMode || 'source-over',
+    octaves: overrides.octaves || 4,
+  };
+}
+
+const state = {
+  bgColor: '#000000',
+  canvasW: 1080,
+  canvasH: 1920,
+  masterSpeed: 0.5,
+  playing: false,
+  time: 0,
+  layers: [],
+};
+
+// Default layers matching reference
+state.layers.push(makeLayer({
+  name: 'Warm Squares',
+  noise: 'perlin',
+  gridSize: 20,
+  shape: 'square',
+  colors: ['#f0c030', '#e8a020', '#ffd700', '#d4a020', '#f5d060'],
+  noiseScale: 0.03,
+  threshold: 0.15,
+  opacity: 0.95,
+  seed: 42,
+}));
+
+state.layers.push(makeLayer({
+  name: 'Red Crosses',
+  noise: 'worley',
+  gridSize: 12,
+  shape: 'cross',
+  colors: ['#e04040', '#d06020', '#ff6b35', '#c0392b', '#28a745'],
+  noiseScale: 0.04,
+  threshold: 0.35,
+  opacity: 0.85,
+  seed: 137,
+  blendMode: 'source-over',
+}));
+
+state.layers.push(makeLayer({
+  name: 'Pink Circles',
+  noise: 'simplex',
+  gridSize: 10,
+  shape: 'circle',
+  colors: ['#f0b0a0', '#ffb347', '#ff6b6b', '#ffd700', '#4ecdc4'],
+  noiseScale: 0.06,
+  threshold: 0.3,
+  opacity: 0.8,
+  seed: 256,
+}));
+
+// ============================================================
+// CANVAS & RENDERING
+// ============================================================
+
+const canvas = document.getElementById('main-canvas');
+const ctx = canvas.getContext('2d');
+let offscreen, offCtx;
+
+function resizeCanvas() {
+  canvas.width = state.canvasW;
+  canvas.height = state.canvasH;
+  offscreen = document.createElement('canvas');
+  offscreen.width = state.canvasW;
+  offscreen.height = state.canvasH;
+  offCtx = offscreen.getContext('2d');
+  fitCanvasToView();
+}
+
+function fitCanvasToView() {
+  const wrap = document.getElementById('canvas-wrap');
+  const maxW = wrap.clientWidth - 40;
+  const maxH = wrap.clientHeight - 60;
+  const scale = Math.min(maxW / state.canvasW, maxH / state.canvasH, 1);
+  canvas.style.width = (state.canvasW * scale) + 'px';
+  canvas.style.height = (state.canvasH * scale) + 'px';
+}
+
+function setCanvasSize(val) {
+  const [w, h] = val.split('x').map(Number);
+  state.canvasW = w;
+  state.canvasH = h;
+  resizeCanvas();
+}
+
+function drawShape(ctx, shape, x, y, size, color) {
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  const pad = Math.max(1, size * 0.1);
+  const s = size - pad * 2;
+
+  switch (shape) {
+    case 'square':
+      ctx.fillRect(x + pad, y + pad, s, s);
+      break;
+    case 'circle':
+      ctx.beginPath();
+      ctx.arc(x + size/2, y + size/2, s/2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'cross': {
+      const arm = s * 0.3;
+      const cx = x + size/2, cy = y + size/2;
+      ctx.fillRect(cx - arm/2, cy - s/2, arm, s);
+      ctx.fillRect(cx - s/2, cy - arm/2, s, arm);
+      break;
+    }
+    case 'vstripes': {
+      const stripeW = Math.max(1, s / 5);
+      for (let i = 0; i < 5; i += 2) {
+        ctx.fillRect(x + pad + i * stripeW, y + pad, stripeW, s);
+      }
+      break;
+    }
+    case 'hstripes': {
+      const stripeH = Math.max(1, s / 5);
+      for (let i = 0; i < 5; i += 2) {
+        ctx.fillRect(x + pad, y + pad + i * stripeH, s, stripeH);
+      }
+      break;
+    }
+  }
+}
+
+function renderLayer(layer, time) {
+  const { canvasW: W, canvasH: H } = state;
+  const g = layer.gridSize;
+  const cols = Math.ceil(W / g);
+  const rows = Math.ceil(H / g);
+  const tOff = time * layer.animSpeed * 0.01;
+  const shapes = ['square', 'circle', 'cross', 'vstripes', 'hstripes'];
+
+  offCtx.clearRect(0, 0, W, H);
+  offCtx.globalAlpha = 1;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const nx = c * layer.noiseScale + tOff;
+      const ny = r * layer.noiseScale + tOff * 0.7;
+      let n = getNoise(layer.noise, nx, ny, layer.seed, layer.octaves);
+      // Normalize to 0-1
+      n = (n + 1) * 0.5;
+
+      if (n < layer.threshold) continue;
+
+      // Map to color
+      const remapped = (n - layer.threshold) / (1 - layer.threshold);
+      const ci = Math.min(Math.floor(remapped * layer.colors.length), layer.colors.length - 1);
+      const color = layer.colors[ci];
+
+      // Map to shape
+      let shape = layer.shape;
+      if (shape === 'mixed') {
+        const si = Math.floor(remapped * shapes.length) % shapes.length;
+        shape = shapes[si];
+      }
+
+      drawShape(offCtx, shape, c * g, r * g, g, color);
+    }
+  }
+
+  // Composite onto main canvas
+  ctx.globalAlpha = layer.opacity;
+  ctx.globalCompositeOperation = layer.blendMode;
+  ctx.drawImage(offscreen, 0, 0);
+}
+
+function render() {
+  const { canvasW: W, canvasH: H } = state;
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = state.bgColor;
+  ctx.fillRect(0, 0, W, H);
+
+  for (const layer of state.layers) {
+    if (!layer.visible) continue;
+    renderLayer(layer, state.time);
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+let lastFrame = 0;
+function loop(ts) {
+  if (state.playing) {
+    const dt = (ts - lastFrame) / 1000;
+    state.time += dt * state.masterSpeed;
+  }
+  lastFrame = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ============================================================
+// UI
+// ============================================================
+
+let dragSrcIdx = null;
+
+function buildLayerUI() {
+  const list = document.getElementById('layer-list');
+  list.innerHTML = '';
+
+  state.layers.forEach((layer, idx) => {
+    const card = document.createElement('div');
+    card.className = 'layer-card';
+    card.draggable = true;
+    card.dataset.idx = idx;
+
+    // Drag events
+    card.addEventListener('dragstart', e => {
+      dragSrcIdx = idx;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      dragSrcIdx = null;
+      document.querySelectorAll('.layer-card').forEach(c => c.classList.remove('drag-over'));
+    });
+    card.addEventListener('dragover', e => {
+      e.preventDefault();
+      card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      if (dragSrcIdx !== null && dragSrcIdx !== idx) {
+        const [moved] = state.layers.splice(dragSrcIdx, 1);
+        state.layers.splice(idx, 0, moved);
+        buildLayerUI();
+      }
+    });
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'layer-header';
+
+    const dot = document.createElement('div');
+    dot.className = 'layer-color';
+    dot.style.background = layer.colors[0];
+
+    const name = document.createElement('span');
+    name.className = 'layer-name';
+    name.textContent = layer.name;
+
+    const visBtn = document.createElement('button');
+    visBtn.className = 'layer-vis';
+    visBtn.innerHTML = layer.visible ? '◉' : '○';
+    visBtn.onclick = (e) => {
+      e.stopPropagation();
+      layer.visible = !layer.visible;
+      visBtn.innerHTML = layer.visible ? '◉' : '○';
+    };
+
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'layer-expand';
+    expandBtn.textContent = '▶';
+    expandBtn.onclick = (e) => {
+      e.stopPropagation();
+      card.classList.toggle('expanded');
+    };
+
+    header.append(dot, name, visBtn, expandBtn);
+    header.onclick = () => card.classList.toggle('expanded');
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'layer-body';
+
+    body.appendChild(makeSelect('Noise', NOISE_TYPES, layer.noise, v => layer.noise = v));
+    body.appendChild(makeSelect('Shape', SHAPES, layer.shape, v => layer.shape = v));
+    body.appendChild(makeSelect('Blend', BLEND_MODES, layer.blendMode, v => layer.blendMode = v, BLEND_LABELS));
+    body.appendChild(makeSlider('Grid', 2, 64, 1, layer.gridSize, v => layer.gridSize = v, 'px'));
+    body.appendChild(makeSlider('Scale', 0.005, 0.2, 0.001, layer.noiseScale, v => layer.noiseScale = v));
+    body.appendChild(makeSlider('Threshold', 0, 0.9, 0.01, layer.threshold, v => layer.threshold = v));
+    body.appendChild(makeSlider('Opacity', 0, 1, 0.01, layer.opacity, v => layer.opacity = v));
+    body.appendChild(makeSlider('Anim', 0, 100, 1, layer.animSpeed, v => layer.animSpeed = v));
+    body.appendChild(makeSlider('Seed', 0, 99999, 1, layer.seed, v => layer.seed = v));
+    if (layer.noise === 'fbm') {
+      body.appendChild(makeSlider('Octaves', 1, 8, 1, layer.octaves, v => layer.octaves = v));
+    }
+
+    // Color palette
+    body.appendChild(makeColorPalette(layer));
+
+    // Layer action buttons
+    const btns = document.createElement('div');
+    btns.className = 'layer-btns';
+
+    const dupBtn = document.createElement('button');
+    dupBtn.className = 'btn btn-sm';
+    dupBtn.textContent = 'Duplicate';
+    dupBtn.onclick = () => { duplicateLayer(idx); };
+
+    const seedBtn = document.createElement('button');
+    seedBtn.className = 'btn btn-sm';
+    seedBtn.textContent = 'New Seed';
+    seedBtn.onclick = () => { layer.seed = Math.floor(Math.random() * 99999); buildLayerUI(); };
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-sm btn-danger';
+    delBtn.textContent = 'Delete';
+    delBtn.onclick = () => { state.layers.splice(idx, 1); buildLayerUI(); };
+
+    btns.append(dupBtn, seedBtn, delBtn);
+    body.appendChild(btns);
+
+    card.append(header, body);
+    list.appendChild(card);
+  });
+}
+
+function makeSlider(label, min, max, step, value, onChange, unit = '') {
+  const row = document.createElement('div');
+  row.className = 'ctrl-row';
+
+  const lbl = document.createElement('label');
+  lbl.textContent = label;
+
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = min;
+  input.max = max;
+  input.step = step;
+  input.value = value;
+
+  const val = document.createElement('span');
+  val.className = 'ctrl-val';
+  val.textContent = step < 1 ? parseFloat(value).toFixed(step < 0.01 ? 3 : 2) : value + unit;
+
+  input.oninput = () => {
+    const v = parseFloat(input.value);
+    onChange(v);
+    val.textContent = step < 1 ? v.toFixed(step < 0.01 ? 3 : 2) : v + unit;
+  };
+
+  row.append(lbl, input, val);
+  return row;
+}
+
+function makeSelect(label, options, value, onChange, labels) {
+  const row = document.createElement('div');
+  row.className = 'ctrl-row';
+
+  const lbl = document.createElement('label');
+  lbl.textContent = label;
+
+  const sel = document.createElement('select');
+  options.forEach((opt, i) => {
+    const o = document.createElement('option');
+    o.value = opt;
+    o.textContent = labels ? labels[i] : opt;
+    if (opt === value) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => {
+    onChange(sel.value);
+    // Rebuild if noise type changed (for octaves toggle)
+    if (label === 'Noise') buildLayerUI();
+  };
+
+  row.append(lbl, sel);
+  return row;
+}
+
+function makeColorPalette(layer) {
+  const row = document.createElement('div');
+  row.className = 'ctrl-row';
+
+  const lbl = document.createElement('label');
+  lbl.textContent = 'Colors';
+
+  const pal = document.createElement('div');
+  pal.className = 'color-palette';
+
+  layer.colors.forEach((col, ci) => {
+    const sw = document.createElement('div');
+    sw.className = 'color-swatch';
+    sw.style.background = col;
+    sw.onclick = (e) => {
+      if (layer.colors.length > 2) {
+        layer.colors.splice(ci, 1);
+        buildLayerUI();
+      }
+    };
+    // Right-click to change color
+    sw.oncontextmenu = (e) => {
+      e.preventDefault();
+      const inp = document.createElement('input');
+      inp.type = 'color';
+      inp.value = col;
+      inp.onchange = () => {
+        layer.colors[ci] = inp.value;
+        sw.style.background = inp.value;
+      };
+      inp.click();
+    };
+    pal.appendChild(sw);
+  });
+
+  if (layer.colors.length < 8) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'color-add';
+    addBtn.textContent = '+';
+    addBtn.onclick = () => {
+      const inp = document.createElement('input');
+      inp.type = 'color';
+      inp.value = '#ff8800';
+      inp.onchange = () => {
+        layer.colors.push(inp.value);
+        buildLayerUI();
+      };
+      inp.click();
+    };
+    pal.appendChild(addBtn);
+  }
+
+  row.append(lbl, pal);
+  return row;
+}
+
+// ============================================================
+// ACTIONS
+// ============================================================
+
+function addLayer(overrides) {
+  if (state.layers.length >= 12) return;
+  const palette = WARM_PALETTES[Math.floor(Math.random() * WARM_PALETTES.length)];
+  state.layers.push(makeLayer({
+    colors: [...palette],
+    noise: NOISE_TYPES[Math.floor(Math.random() * NOISE_TYPES.length)],
+    shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
+    gridSize: [8, 10, 12, 16, 20, 24][Math.floor(Math.random() * 6)],
+    noiseScale: 0.02 + Math.random() * 0.08,
+    threshold: 0.15 + Math.random() * 0.4,
+    ...overrides,
+  }));
+  buildLayerUI();
+}
+
+function duplicateLayer(idx) {
+  const src = state.layers[idx];
+  const dup = { ...src, id: layerIdCounter++, name: src.name + ' copy', colors: [...src.colors] };
+  state.layers.splice(idx + 1, 0, dup);
+  buildLayerUI();
+}
+
+function randomizeAll() {
+  state.layers = [];
+  const count = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < count; i++) {
+    const palette = WARM_PALETTES[Math.floor(Math.random() * WARM_PALETTES.length)];
+    state.layers.push(makeLayer({
+      name: `Layer ${i + 1}`,
+      colors: [...palette].sort(() => Math.random() - 0.5).slice(0, 3 + Math.floor(Math.random() * 3)),
+      noise: NOISE_TYPES[Math.floor(Math.random() * NOISE_TYPES.length)],
+      shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
+      gridSize: [6, 8, 10, 12, 16, 20, 24, 32][Math.floor(Math.random() * 8)],
+      noiseScale: 0.01 + Math.random() * 0.1,
+      threshold: 0.1 + Math.random() * 0.5,
+      opacity: 0.6 + Math.random() * 0.4,
+      blendMode: BLEND_MODES[Math.floor(Math.random() * BLEND_MODES.length)],
+    }));
+  }
+  buildLayerUI();
+}
+
+function togglePlay() {
+  state.playing = !state.playing;
+  document.getElementById('play-btn').textContent = state.playing ? '❚❚ Pause' : '▶ Play';
+}
+
+function exportPNG() {
+  render();
+  const link = document.createElement('a');
+  link.download = `grid-noise-${Date.now()}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function exportGIF() {
+  // Simple animated export as WebM using MediaRecorder
+  const stream = canvas.captureStream(30);
+  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+  const chunks = [];
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    const link = document.createElement('a');
+    link.download = `grid-noise-${Date.now()}.webm`;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+  };
+
+  // Record 4 seconds
+  const wasPlaying = state.playing;
+  state.playing = true;
+  recorder.start();
+  setTimeout(() => {
+    recorder.stop();
+    state.playing = wasPlaying;
+    if (!wasPlaying) {
+      document.getElementById('play-btn').textContent = '▶ Play';
+    }
+  }, 4000);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+
+resizeCanvas();
+buildLayerUI();
+requestAnimationFrame(loop);
+
+window.addEventListener('resize', fitCanvasToView);
+</script>
+</body>
+</html>
