@@ -329,7 +329,7 @@ body {
 <div id="canvas-wrap">
   <canvas id="main-canvas"></canvas>
   <div id="anim-bar">
-    <button class="btn btn-sm" id="play-btn" onclick="togglePlay()">&#9654; Play</button>
+    <button class="btn btn-sm" id="play-btn" onclick="togglePlay()">&#10074;&#10074; Pause</button>
     <label style="font-size:10px;color:#aaa;">Speed</label>
     <input type="range" min="0" max="200" value="50" style="width:80px;accent-color:var(--accent);" oninput="state.masterSpeed=this.value/100">
   </div>
@@ -382,7 +382,7 @@ const state = {
   canvasW: 1080,
   canvasH: 1920,
   masterSpeed: 0.5,
-  playing: false,
+  playing: true,
   time: 0,
   layers: [],
 };
@@ -398,6 +398,7 @@ state.layers.push(makeLayer({
   threshold: 0.15,
   opacity: 0.95,
   seed: 42,
+  animSpeed: 15,
 }));
 
 state.layers.push(makeLayer({
@@ -410,6 +411,7 @@ state.layers.push(makeLayer({
   threshold: 0.35,
   opacity: 0.85,
   seed: 137,
+  animSpeed: 25,
 }));
 
 state.layers.push(makeLayer({
@@ -422,6 +424,7 @@ state.layers.push(makeLayer({
   threshold: 0.3,
   opacity: 0.8,
   seed: 256,
+  animSpeed: 20,
 }));
 
 // ============================================================
